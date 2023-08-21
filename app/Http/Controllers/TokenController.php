@@ -17,9 +17,6 @@ class TokenController
 
     public function saveToken(Request $request)
     {
-
-        Log::debug(print_r($request->all(), true));
-
         $this->amo = (new AmoCRMService())->get_client();
 
         if ($request->has("referer")) {
@@ -30,9 +27,6 @@ class TokenController
          * Ловим обратный код
          */
         try {
-
-            Log::debug("getToken 2");
-            Log::debug(print_r($request->all(), true));
 
             $code = $request->get("code");
 
@@ -104,8 +98,6 @@ class TokenController
     function _saveToken($accessToken): void
     {
         $token_path = (new AmoCRMService())->getTokenPath();
-
-        Log::debug($token_path);
 
         if (
             isset($accessToken)

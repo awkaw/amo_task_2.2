@@ -17,17 +17,5 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', [\App\Http\Controllers\Controller::class, "home"])->name("home");
 Route::get('/input', [\App\Http\Controllers\Controller::class, "input"])->name("input");
 Route::get('/getToken', [\App\Http\Controllers\TokenController::class, "getToken"])->name("getToken");
-Route::get('/getToken2', [\App\Http\Controllers\TokenController::class, "getToken2"])->name("getToken2");
 Route::get('/saveToken', [\App\Http\Controllers\TokenController::class, "saveToken"])->name("saveToken");
-
-Route::get('/dashboard', function () {
-    return view('dashboard');
-})->middleware(['auth', 'verified'])->name('dashboard');
-
-Route::middleware('auth')->group(function () {
-    Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
-    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
-    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
-});
-
-require __DIR__.'/auth.php';
+Route::post('/send', [\App\Http\Controllers\Controller::class, "send"])->name("send");
