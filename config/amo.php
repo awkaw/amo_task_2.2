@@ -1,6 +1,5 @@
 <?php
 
-
 return [
 
     "client_id" => env("AMO_CLIENT_ID"),

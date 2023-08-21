@@ -3,19 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\Services\AmoCRM\AmoCRMService;
+use http\Client\Response;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 
 class TokenController
 {
     protected $amo = null;
 
-    public function __construct()
-    {
-
-    }
-
-    public function saveToken(Request $request)
+    public function saveToken(Request $request): RedirectResponse
     {
         $this->amo = (new AmoCRMService())->get_client();
 
@@ -27,14 +23,13 @@ class TokenController
          * Ловим обратный код
          */
         try {
-
             $code = $request->get("code");
 
             $accessToken = $this->amo->getOAuthClient()->getAccessTokenByCode($code);
 
             if (!$accessToken->hasExpired()) {
 
-                $this->_saveToken([
+                $this->save([
                     'accessToken' => $accessToken->getToken(),
                     'refreshToken' => $accessToken->getRefreshToken(),
                     'expires' => $accessToken->getExpires(),
@@ -81,21 +76,27 @@ class TokenController
                 return response()->redirectTo($authorizationUrl);
             }
 
-        } elseif (!$request->has("from_widget") && (empty($request->get("state")) || empty($request->session()->get("oauth2state")) || ($request->get("state") !== $request->session()->get("oauth2state")))) {
+        } elseif (
+            !$request->has("from_widget") &&
+            (empty($request->get("state")) ||
+                empty($request->session()->get("oauth2state")) ||
+                ($request->get("state") !== $request->session()->get("oauth2state"))
+            )
+        ) {
 
             $request->session()->remove("oauth2state");
 
             return view("invalid", [
-                "message" => "Invalid state"
+                "message" => "Invalid state",
             ]);
         }
 
         return view("invalid", [
-            "message" => "Invalid state 2"
+            "message" => "Invalid state 2",
         ]);
     }
 
-    function _saveToken($accessToken): void
+    private function save($accessToken): void
     {
         $token_path = (new AmoCRMService())->getTokenPath();
 

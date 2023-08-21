@@ -14,7 +14,8 @@ class AmoCRMService
         $this->token_path = storage_path("access_token.json");
     }
 
-    public function getTokenPath(){
+    public function getTokenPath(): string
+    {
         return $this->token_path;
     }
 

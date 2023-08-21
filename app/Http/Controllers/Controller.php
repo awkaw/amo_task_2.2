@@ -2,25 +2,17 @@
 
 namespace App\Http\Controllers;
 
-use AmoCRM\Client\AmoCRMApiClient;
 use AmoCRM\Collections\CatalogElementsCollection;
-use AmoCRM\Collections\ContactsCollection;
 use AmoCRM\Collections\CustomFields\CustomFieldsCollection;
 use AmoCRM\Collections\CustomFieldsValuesCollection;
 use AmoCRM\Collections\Leads\LeadsCollection;
-use AmoCRM\Collections\Leads\Pipelines\PipelinesCollection;
 use AmoCRM\Collections\LinksCollection;
 use AmoCRM\Collections\TagsCollection;
 use AmoCRM\Collections\TasksCollection;
-use AmoCRM\Exceptions\AmoCRMApiException;
-use AmoCRM\Exceptions\AmoCRMMissedTokenException;
-use AmoCRM\Exceptions\AmoCRMoAuthApiException;
-use AmoCRM\Filters\ContactsFilter;
 use AmoCRM\Filters\EntitiesLinksFilter;
 use AmoCRM\Helpers\EntityTypesInterface;
 use AmoCRM\Models\AccountModel;
 use AmoCRM\Models\CatalogElementModel;
-use AmoCRM\Models\CatalogModel;
 use AmoCRM\Models\ContactModel;
 use AmoCRM\Models\Customers\CustomerModel;
 use AmoCRM\Models\CustomFields\NumericCustomFieldModel;
@@ -33,30 +25,24 @@ use AmoCRM\Models\CustomFieldsValues\ValueModels\TextCustomFieldValueModel;
 use AmoCRM\Models\LeadModel;
 use AmoCRM\Models\TagModel;
 use AmoCRM\Models\TaskModel;
-use AmoCRM\Models\UserModel;
-use App\Models\PersonalAccessToken;
 use App\Services\AmoCRM\AmoCRMService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Foundation\Validation\ValidatesRequests;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller as BaseController;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
-use Ramsey\Uuid\Type\Integer;
 use AmoCRM\Models\CustomFieldsValues\NumericCustomFieldValuesModel;
 
 class Controller extends BaseController
 {
     use AuthorizesRequests, ValidatesRequests;
 
-    protected $amo = null;
-    protected $first_name = null;
-    protected $last_name = null;
-    protected $phone = null;
-    protected $email = null;
-    protected $gender = null;
+    protected ?\AmoCRM\Client\AmoCRMApiClient $amo = null;
+    protected ?string $first_name = null;
+    protected ?string $last_name = null;
+    protected ?string $phone = null;
+    protected ?string $email = null;
+    protected ?string $gender = null;
 
     public function __construct()
     {
@@ -66,7 +52,7 @@ class Controller extends BaseController
     public function home(Request $request)
     {
 
-        if($request->has("code")){
+        if( $request->has("code") ){
 
             return response()->redirectTo("/saveToken?".http_build_query([
                 "code" => $request->get("code"),
@@ -77,7 +63,7 @@ class Controller extends BaseController
             ]));
         }
 
-        if(is_null($this->amo)){
+        if( $this->amo === null ){
             return response()->redirectToRoute("getToken");
         }
 
@@ -86,8 +72,6 @@ class Controller extends BaseController
 
     public function send(Request $request)
     {
-        $this->amo = (new AmoCRMService())->create_client();
-
         $request->validate([
             "first_name" => "required|string:min:3",
             "last_name" => "required|string:min:3",
@@ -112,48 +96,42 @@ class Controller extends BaseController
         // Получаем сделку существующего контакта
         if($contact !== null){
 
-            $leads = $this->get_leads_from_contact($contact);
+            $lead = $this->get_lead_from_contact($contact);
 
-            if($leads)
+            if($lead instanceof LeadModel)
             {
-                foreach ($leads as $lead) {
+                $this->amo->leads()->get();
 
-                    if($lead instanceof LeadModel)
-                    {
-                        $this->amo->leads()->get();
+                if($lead->getStatusId() === 142)
+                {
+                    // Добавляем покупателя
+                    $customerModel = $this->add_customer($user_id, $contact);
 
-                        if($lead->getStatusId() == 142)
-                        {
-                            // Добавляем покупателя
-                            $customerModel = $this->add_customer($user_id, $contact);
+                    // Добавим тег
+                    $tagModel = new TagModel();
+                    $tagModel->setName($lead->getName());
 
-                            // Добавим тег
-                            $tagModel = new TagModel();
-                            $tagModel->setName($lead->getName());
+                    $tagsCollection = new TagsCollection();
+                    $tagsCollection->add($tagModel);
 
-                            $tagsCollection = new TagsCollection();
-                            $tagsCollection->add($tagModel);
-
-                            $customerModel->setTags($tagsCollection);
-                        }
-                    }
+                    $customerModel->setTags($tagsCollection);
                 }
             }
-        }
 
-        // Если нет дубля, то создаем контакт
-        if($contact === null){
+        }else{
+
+            // Если нет дубля, то создаем контакт
             $contact = $this->add_contact($user_id, $this->amo->account()->getCurrent());
+
+            // Добавляем сделку
+            $newLeadModel = $this->add_lead($user_id, $contact);
+
+            // Добавляем товары
+            $this->add_products($newLeadModel);
+
+            // Добавить задачу
+            $this->add_task($user_id, $newLeadModel);
         }
-
-        // Добавляем сделку
-        $newLeadModel = $this->add_lead($user_id, $contact);
-
-        // Добавляем товары
-        $this->add_products($newLeadModel);
-
-        // Добавить задачу
-        $this->add_task($user_id, $newLeadModel);
 
         return [
             "code" => 200,
@@ -189,15 +167,12 @@ class Controller extends BaseController
 
         $catalogElementsCollection = new CatalogElementsCollection();
 
-        define("televisor", "Телевизор");
-        define("magnitofon", "Магнитофон");
-
         $productModel1 = new CatalogElementModel();
-        $productModel1->setName(televisor);
+        $productModel1->setName("Телевизор");
         $productModel1->setQuantity(1);
 
         $productModel2 = new CatalogElementModel();
-        $productModel2->setName(magnitofon);
+        $productModel2->setName("Магнитофон");
         $productModel2->setQuantity(1);
 
         $catalogElementsCollection->add($productModel1);
@@ -206,10 +181,10 @@ class Controller extends BaseController
         $catalogElementsService = $this->amo->catalogElements($catalog->getId());
         $catalogElementsService->add($catalogElementsCollection);
 
-        $televisorElement = $catalogElementsCollection->getBy('name', televisor);
+        $televisorElement = $catalogElementsCollection->getBy('name', "Телевизор");
         $televisorElement->setQuantity(1);
 
-        $magnitofonElement = $catalogElementsCollection->getBy('name', magnitofon);
+        $magnitofonElement = $catalogElementsCollection->getBy('name', "Магнитофон");
         $magnitofonElement->setQuantity(1);
 
         $links = new LinksCollection();
@@ -247,7 +222,7 @@ class Controller extends BaseController
         $dateEnd->minute = 0;
         $dateEnd->second = 0;
 
-        if($dateEnd->hour > 17 && $dateEnd->minute > 59 && $dateEnd->second > 59){
+        if( $dateEnd->hour > 17 && $dateEnd->minute > 59 && $dateEnd->second > 59 ){
             $dateEnd->addDay();
         }
 
@@ -298,9 +273,9 @@ class Controller extends BaseController
         return $customerModel;
     }
 
-    protected function get_leads_from_contact(ContactModel $contactModel): LeadsCollection
+    protected function get_lead_from_contact(ContactModel $contactModel): ?LeadModel
     {
-        $contactLeads = new LeadsCollection();
+        $lead = null;
 
         $links = $this->amo->links("contacts");
         $filter = new EntitiesLinksFilter([$contactModel->getId()]);
@@ -308,16 +283,10 @@ class Controller extends BaseController
 
         if($contactsLeads)
         {
-            $leads = $this->amo->leads()->getOne($contactsLeads->getToEntityId());
-            //$leads = $this->amo->leads()->get($contactsLeads->getToEntityId());
-
-            if($leads)
-            {
-                $contactLeads->add($leads);
-            }
+            $lead = $this->amo->leads()->getOne($contactsLeads->getToEntityId());
         }
 
-        return $contactLeads;
+        return $lead;
     }
 
     protected function get_user(): int
@@ -347,21 +316,6 @@ class Controller extends BaseController
     {
         $duplicate = null;
 
-        /*$amoService = new AmoCRMService();
-
-        $subdomain = $amoService->getDomain();
-        $access_token = $amoService->getAccessToken();
-
-        $response = Http::withHeaders([
-            "Authorization" => "Bearer {$access_token}",
-            "Content-Type" => "application/json"
-        ])
-            ->withUserAgent("amoCRM-oAuth-client/1.0")
-            ->get("https://".$subdomain."/api/v4/contacts")
-        ;
-
-        Log::debug(print_r($response->json(), true));*/
-
         try{
 
             $contacts = $this->amo->contacts()->get();
@@ -389,8 +343,7 @@ class Controller extends BaseController
                 }
             }
 
-        }catch (\Exception $e)
-        {
+        } catch (\Exception $e) {
 
         }
 
@@ -422,8 +375,6 @@ class Controller extends BaseController
 
     public function add_contact(int $user_id, AccountModel $accountModel): ContactModel
     {
-        $this->add_fields();
-
         $contactModel = new ContactModel();
 
         $contactModel->setName($this->first_name." ".$this->last_name);
@@ -437,11 +388,7 @@ class Controller extends BaseController
 
         $customFields = new CustomFieldsValuesCollection();
 
-        $phoneField = $customFields->getBy('code', 'PHONE');
-
-        if (empty($phoneField)) {
-            $phoneField = (new TextCustomFieldValuesModel())->setFieldCode('PHONE');
-        }
+        $phoneField = (new TextCustomFieldValuesModel())->setFieldCode('PHONE');
 
         $phoneField->setValues(
             (new TextCustomFieldValueCollection())
@@ -450,11 +397,7 @@ class Controller extends BaseController
 
         $customFields->add($phoneField);
 
-        $emailField = $customFields->getBy('code', 'EMAIL');
-
-        if (empty($emailField)) {
-            $emailField = (new TextCustomFieldValuesModel())->setFieldCode('EMAIL');
-        }
+        $emailField = (new TextCustomFieldValuesModel())->setFieldCode('EMAIL');
 
         $emailField->setValues(
             (new TextCustomFieldValueCollection())
@@ -463,11 +406,7 @@ class Controller extends BaseController
 
         $customFields->add($emailField);
 
-        $sexField = $customFields->getBy('code', 'SEX');
-
-        if (empty($sexField)) {
-            $sexField = (new TextCustomFieldValuesModel())->setFieldCode('SEX');
-        }
+        $sexField = (new TextCustomFieldValuesModel())->setFieldCode('SEX');
 
         $sexField->setValues(
             (new TextCustomFieldValueCollection())
@@ -476,11 +415,7 @@ class Controller extends BaseController
 
         $customFields->add($sexField);
 
-        $ageField = $customFields->getBy('code', 'AGE');
-
-        if (empty($ageField)) {
-            $ageField = (new NumericCustomFieldValuesModel())->setFieldCode('AGE');
-        }
+        $ageField = (new NumericCustomFieldValuesModel())->setFieldCode('AGE');
 
         $ageField->setValues(
             (new NumericCustomFieldValueCollection())
