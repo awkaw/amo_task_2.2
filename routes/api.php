@@ -14,6 +14,16 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
+Route::post('/tokens/create', function (Request $request) {
+
+    $token = $request->user()->createToken($request->token_name);
+
+    return ['token' => $token->plainTextToken];
+
+})->name("api.tokens.create");
+
+Route::post('/send', [\App\Http\Controllers\Controller::class, "send"])->name("send");
+
+/*Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
-});
+});*/
