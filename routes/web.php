@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -13,6 +14,8 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::get('/', function () {
-    return view('welcome');
-});
+Route::get('/', [\App\Http\Controllers\Controller::class, "home"])->name("home");
+Route::get('/input', [\App\Http\Controllers\Controller::class, "input"])->name("input");
+Route::get('/getToken', [\App\Http\Controllers\TokenController::class, "getToken"])->name("getToken");
+Route::get('/saveToken', [\App\Http\Controllers\TokenController::class, "saveToken"])->name("saveToken");
+Route::post('/send', [\App\Http\Controllers\Controller::class, "send"])->name("send");
